@@ -8,4 +8,8 @@ setup(name='snippets-stats',
       author='Chris Valaas',
       author_email='cvalaas@mozilla.com',
       packages=find_packages(exclude=["*.tests", "*.tests.*", "tests.*", "tests"]),
+      install_requires=[
+        'geoip2.database',
+        'httpagentparser'
+      ]
     )
