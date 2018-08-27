@@ -12,10 +12,9 @@ import geoip2.database
 import httpagentparser
 import time
 import sys,os,errno,re,argparse
+import json
 from datetime import datetime
 from config import config
-
-LOG_REGEX = '([(\d\.)]+) snippets-stats.mozilla.org - \[(.*?)\] "GET /foo.html\?(.*?) HTTP/.*" (?:\d+|-) \d+ "-" "(.*?)"'
 
 ALLOWED_REQUEST_STRING_FIELDS = ('snippet_name', 'metric', 'country', 'campaign', 'locale')
 
@@ -27,16 +26,13 @@ def print_debug(level, message):
     print("[%s] %s" % (datetime.now(),message))
 
 def extract_fields(line):
-  m = re.match(LOG_REGEX, line)
-  if not m:
-    if re.search('GET /foo.html', line):
-      print("[WARN] main regex fail:")
-      print(line)
-    return(None, None, None, None)
-  else:
-    (ip,date,request_str,ua_str) = m.groups()
-
-  return(ip,date,request_str,ua_str)
+  json_dict = json.loads(line)
+  #print(json_dict)
+  #print(json_dict['ClientHost'])
+  #print(json_dict['time'])
+  #print(json_dict['RequestPath'])
+  #print(json_dict['request_User-Agent'])
+  return(json_dict['ClientHost'],json_dict['time'],json_dict['RequestPath'],json_dict['request_User-Agent'])
 
 def parse_file(filename, geoip_db_reader, results):
   skip_count_ip_lookup = 0
@@ -143,16 +139,17 @@ if __name__ == "__main__":
   total_files = 0
   total_skips = 0
   for file in os.listdir(config['snippets_dir']):
-    if re.match('^snippets-stats.mozilla.org.access_2018-06-19', file):
+    if re.match('^snippets.log-', file):
       total_files += 1
       print("Processing filename: %s" % file)
-      results,processed,skipped = parse_file("/Users/cvalaas/git/data/snippets/"+file,reader,results)
+      results,processed,skipped = parse_file(os.path.join(config['snippets_dir'],file),reader,results)
       total_skips += skipped
       total_processed += processed
     else:
       print("Filename: %s not a match" % file)
 
 #  for key in results:
+#    print(results[key])
 #    if results[key][0][4] == '7905' and results[key][0][0] == 'Firefox' and results[key][0][1] == '60' and results[key][0][2] == 'Windows 10':
 #      print(results[key])
 #    if results[key][1] > 10000:
