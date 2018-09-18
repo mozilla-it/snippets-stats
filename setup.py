@@ -11,6 +11,7 @@ setup(name='snippets-stats',
       scripts=['get_snippets_logs.py','snippets.py']
       install_requires=[
         'geoip2',
+        'pyodbc',
         'httpagentparser'
       ]
     )
