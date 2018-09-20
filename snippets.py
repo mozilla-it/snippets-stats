@@ -95,6 +95,10 @@ def parse_ua_string(ua):
   else:
     ua_family = parsed_ua['browser']['name']
     ua_major  = parsed_ua['browser']['version'] if 'version' in parsed_ua['browser'] else ''
+    # god knows why, but sometimes httpagentparser returns 'AndroidBrowser' and sometimes 'Firefox'
+    # for the same UA. So let's just force it to Firefox
+    if ua_family == 'AndroidBrowser':
+      ua_family = 'Firefox'
 
   ua_major = ua_major.split('.')[0]
 
