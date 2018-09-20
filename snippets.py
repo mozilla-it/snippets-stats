@@ -121,6 +121,8 @@ def like_insert_into_vertica_i_guess(date, results):
   cnxn = pyodbc.connect("DSN=vertica", autocommit=False)
   cursor = cnxn.cursor()
 
+  cursor.execute('DELETE FROM snippet_count WHERE date=?', date)
+
   for key in results:
     data_l = results[key][0]
     count  = results[key][1]
