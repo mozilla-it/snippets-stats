@@ -24,7 +24,12 @@ def get_snippets_logs(fetch_date):
   os.environ['AWS_ACCESS_KEY_ID']     = config['s3_snippets_bucket_AK']
   os.environ['AWS_SECRET_ACCESS_KEY'] = config['s3_snippets_bucket_SK']
 
-  s3_uri = 's3://' + config['s3_snippets_bucket'] + config['s3_snippets_path'] + '/' + date_no_dashes
+  # s3 is very sensitive about extra slashses :(
+  if config['s3_snippets_path'].strip('/ ') == '':
+    s3_uri = 's3://' + config['s3_snippets_bucket'].strip('/ ') + '/' + date_no_dashes
+  else:
+    s3_uri = 's3://' + config['s3_snippets_bucket'].strip('/ ') + '/' + \
+                       config['s3_snippets_path'].strip('/ ')   + '/' + date_no_dashes
   aws_command_l = ['aws', 's3', 'sync', s3_uri, os.path.join(s3_uri,config['snippets_dir'], fetch_date)]
   print_debug(3, "Calling: %s" % ' '.join(aws_command_l))
   call( aws_command_l )
