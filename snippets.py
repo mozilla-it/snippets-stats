@@ -49,7 +49,7 @@ def parse_file(filename, geoip_db_reader, results):
   processed_count = 0
 
   #with gzip.open(filename, mode='rt') as f:
-  with open(filename) as f:
+  with open(filename,encoding="utf-8") as f:
     for line in f:
       (ip,date,request_str,ua_str) = extract_fields(line)
       if not ip:
