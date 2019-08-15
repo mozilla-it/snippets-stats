@@ -6,14 +6,31 @@ import time
 import sys,os,errno,re,argparse
 import json
 import datetime
-#import gzip
-import pyodbc
-from config import config
+from subprocess import call
+from google.cloud import bigquery, storage
 
 ALLOWED_REQUEST_STRING_FIELDS = ['snippet_name', 'metric', 'country', 'campaign', 'locale']
 
+SNIPPETS_DIR = os.environ.get('SNIPPETS_DIR','./workspace/snippets-stats')
+S3_SNIPPETS_PATH = os.environ.get('S3_SNIPPETS_PATH','/').strip('/ ')
+S3_SNIPPETS_BUCKET = os.environ.get('S3_SNIPPETS_BUCKET',None).strip('/ ')
 
-proxies = config['proxies']
+GEOIP_DB_NAME = 'GeoIP2-Country.mmdb'
+
+def get_snippets_logs(fetch_date = datetime.datetime.now().strftime('%Y-%m-%d')):
+  print_debug(3, "Using date %s" % fetch_date)
+
+  fetch_date_l = [ i for i in fetch_date.split('-') ]
+  date_no_dashes = ''.join(fetch_date_l)
+
+  # s3 is very sensitive about extra slashses :(
+  if S3_SNIPPETS_PATH == '':
+    s3_uri = 's3://' + S3_SNIPPETS_BUCKET + '/' + date_no_dashes
+  else:
+    s3_uri = 's3://' + S3_SNIPPETS_BUCKET + '/' + S3_SNIPPETS_PATH + '/' + date_no_dashes
+  aws_command_l = ['aws', 's3', 'sync', s3_uri, os.path.join(SNIPPETS_DIR, fetch_date)]
+  print_debug(3, "Calling: %s" % ' '.join(aws_command_l))
+  call( aws_command_l )
 
 def print_debug(level, message):
   if debug >= level:
@@ -121,56 +138,75 @@ def get_date_from(date_to_process, offset):
   next_day = date_to_process + datetime.timedelta(days=offset)
   return str(next_day)
 
-def like_insert_into_vertica_i_guess(date, results):
-  cnxn = pyodbc.connect("DSN=vertica", autocommit=False)
-  cursor = cnxn.cursor()
+def like_insert_into_bq_i_guess(date, results):
+  bq = bigquery.Client()
 
-  cursor.execute('DELETE FROM snippet_count WHERE date=?', date)
+  dataset_id = "snippets"
+  table_id = "snippet_count"
+
+  table_ref = bq.dataset(dataset_id).table(table_id)
+  table = bq.get_table(table_ref)
+  
+  q = bq.query("DELETE FROM snippets.snippet_count WHERE date=\"{}\"".format(date))
+  q.result() # waits for finish
+  
+  insert_rows = []
 
   for key in results:
     data_l = results[key][0]
     count  = results[key][1]
 
-    sql = "INSERT INTO snippet_count (date, ua_family, ua_major, os_family, country_code, " \
-          "snippet_id, impression_count, locale, metric, user_country, campaign) "  \
-          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-    cursor.execute(sql, date, data_l[0], data_l[1], data_l[2], \
-                   data_l[3], data_l[4], count, data_l[5],     \
-                   data_l[6], data_l[7], data_l[8])
-
-  commit_sql = "INSERT INTO last_updated (name, updated_at, updated_by) "  \
-              "VALUES ('snippet_count', now(), '" + os.path.basename(__file__) + "')"
-  cursor.execute(commit_sql)
-  cursor.execute("COMMIT")
+    values = (date, data_l[0], data_l[1], data_l[2],data_l[3], data_l[4], count, data_l[5],data_l[6], data_l[7], data_l[8])
+    insert_rows += [values]
+  if len(insert_rows) > 0:
+    max_queries = 1000
+    chunks = [insert_rows[i * max_queries:(i + 1) * max_queries] for i in range((len(insert_rows) + max_queries - 1) // max_queries )]
+    for c in chunks:
+      err = bq.insert_rows(table, c)
+      if len(err) > 0:
+        print(c)
+        print(err)
 
 if __name__ == "__main__":
  
   parser = argparse.ArgumentParser(description="Parse snippets-stats logs")
   parser.add_argument('-d', '--debug', action='store', help='debug level', type=int, default=3)
-  #parser.add_argument('--date', action='store', help='date to process', type=str, default=datetime.datetime.now().strftime('%Y-%m-%d'))
   parser.add_argument('--date', action='store', help='date to process', type=str)
+  parser.add_argument('--geoip-gcs-bucket', action='store', help='gcs bucket where geoip db lives', type=str)
   args = parser.parse_args()
 
   debug = args.debug
 
   print_debug(1, "Starting...")
 
-  reader = geoip2.database.Reader(config['geoip_db_loc'])
 
   if not args.date:
     # by default, load the data from yesterday
-    now_date = datetime.datetime.now().strftime('%Y-%m-%d')
-    load_date = get_date_from(now_date, -1)
+    load_date = get_date_from(datetime.datetime.now().strftime('%Y-%m-%d'),-1)
   else:
     load_date = args.date
+
+  GEOIP_DB_PATH = os.path.join(SNIPPETS_DIR,GEOIP_DB_NAME)
+  if args.geoip_gcs_bucket:
+    gcs = storage.Client()
+    gcs_bucket = gcs.get_bucket(args.geoip_gcs_bucket)
+    blob = gcs_bucket.blob(GEOIP_DB_NAME)
+    blob.download_to_filename(GEOIP_DB_PATH)
+
 
   # because we need to get the logs from day X from the directory for day X+1:
   date_1_day_forward = get_date_from(load_date, 1)
 
+  # load geoip db
+  reader = geoip2.database.Reader(GEOIP_DB_PATH)
+
+  # this copies the logs from s3 locally
+  get_snippets_logs(date_1_day_forward)
+
   date_l = [ i for i in date_1_day_forward.split('-') ]
   date_no_dashes = ''.join(date_l)
 
-  logs_path = os.path.join(config['snippets_dir'], date_1_day_forward)
+  logs_path = os.path.join(SNIPPETS_DIR, date_1_day_forward)
 
   # the hits for day X are in the log dated day X+1
   file_pattern = "^snippets.log-%s" % date_no_dashes
@@ -198,14 +234,7 @@ if __name__ == "__main__":
       else:
         print("Filename: %s not a match" % file)
 
-#  for key in results:
-#    print(results[key])
-#    if results[key][0][4] == '7905' and results[key][0][0] == 'Firefox' and results[key][0][1] == '60' and results[key][0][2] == 'Windows 10':
-#      print(results[key])
-#    if results[key][1] > 10000:
-#      print(results[key][0],results[key][1])
-
-  like_insert_into_vertica_i_guess(load_date, results)
+  like_insert_into_bq_i_guess(load_date, results)
 
   print_debug(3, "Summary:")
   print_debug(3, "Files processed  : %d" % total_files)

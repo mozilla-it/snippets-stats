@@ -8,10 +8,11 @@ setup(name='snippets-stats',
       author='Chris Valaas',
       author_email='cvalaas@mozilla.com',
       packages=find_packages(exclude=["*.tests", "*.tests.*", "tests.*", "tests"]),
-      scripts=['get_snippets_logs.py','snippets.py'],
+      scripts=['snippets.py'],
       install_requires=[
         'geoip2',
-        'pyodbc',
+        'google-cloud-bigquery',
+        'google-cloud-storage',
         'httpagentparser'
       ]
     )
