@@ -11,7 +11,7 @@ from google.cloud import bigquery, storage
 
 ALLOWED_REQUEST_STRING_FIELDS = ['snippet_name', 'metric', 'country', 'campaign', 'locale']
 
-SNIPPETS_DIR = os.environ.get('SNIPPETS_DIR','./workspace/snippets-stats')
+SNIPPETS_DIR = os.environ.get('SNIPPETS_DIR','/workspace/snippets-stats')
 S3_SNIPPETS_PATH = os.environ.get('S3_SNIPPETS_PATH','/').strip('/ ')
 S3_SNIPPETS_BUCKET = os.environ.get('S3_SNIPPETS_BUCKET',None).strip('/ ')
 
