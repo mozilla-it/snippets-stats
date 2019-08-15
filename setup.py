@@ -13,6 +13,7 @@ setup(name='snippets-stats',
         'geoip2',
         'google-cloud-bigquery',
         'google-cloud-storage',
+        'awscli',
         'httpagentparser'
       ]
     )
